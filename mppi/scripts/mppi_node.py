@@ -19,7 +19,15 @@ import utils.utils as utils
 from utils.jax_utils import numpify
 import utils.jax_utils as jax_utils
 from utils.Track import Track
-jax.config.update("jax_compilation_cache_dir", "/home/nvidia/jax_cache") 
+# jax.config.update("jax_compilation_cache_dir", "/home/nvidia/jax_cache") 
+
+import os
+base_dir = os.path.dirname(os.path.realpath(__file__))
+config_path = os.path.join(base_dir, 'config.yaml')
+config_path = os.path.abspath(config_path)
+
+map_path = os.path.join(base_dir, 'waypoints', 'map_info.txt')
+map_path = os.path.abspath(map_path)
 
 
 ## This is a demosntration of how to use the MPPI planner with the Roboracer
@@ -29,14 +37,18 @@ class MPPI_Node(Node):
     def __init__(self):
         super().__init__('lmppi_node')
         self.config = utils.ConfigYAML()
-        self.config.load_file('./config.yaml')
+        # self.config.load_file('./config.yaml')
+        self.config.load_file(config_path)
         self.config.norm_params = np.array(self.config.norm_params).T
         if self.config.random_seed is None:
             self.config.random_seed = np.random.randint(0, 1e6)
         jrng = jax_utils.oneLineJaxRNG(self.config.random_seed)    
         
-        map_info = np.genfromtxt(self.config.map_dir + 'map_info.txt', delimiter='|', dtype='str')
-        track, self.config = Track.load_map(self.config.map_dir, map_info, self.config.map_ind, self.config)
+        # map_info = np.genfromtxt(self.config.map_dir + 'map_info.txt', delimiter='|', dtype='str')
+        map_info = np.genfromtxt(map_path, delimiter='|', dtype=str)
+        # track, self.config = Track.load_map(self.config.map_dir, map_info, self.config.map_ind, self.config)
+        breakpoint()
+        track, self.config = Track.load_map(map_path, map_info, self.config.map_ind, self.config)
         # track.waypoints[:, 3] += 0.5 * np.pi
         self.infer_env = InferEnv(track, self.config, DT=self.config.sim_time_step)
         self.mppi = MPPI(self.config, self.infer_env, jrng)

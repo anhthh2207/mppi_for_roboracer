@@ -56,6 +56,7 @@ install(PROGRAMS
   scripts/vis_node.py
   scripts/infer_env.py
   scripts/mppi_tracking.py
+  scripts/config.yaml
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -74,6 +75,15 @@ install(DIRECTORY
   DESTINATION lib/${PROJECT_NAME}/dynamics_models
   FILES_MATCHING
   PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
+
+# Install waypoints directory
+install(DIRECTORY
+  scripts/waypoints/
+  DESTINATION lib/${PROJECT_NAME}/waypoints
+  FILES_MATCHING
+  PATTERN "*"
   PATTERN "__pycache__" EXCLUDE
 )
 
