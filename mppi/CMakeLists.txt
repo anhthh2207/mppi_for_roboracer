@@ -52,12 +52,31 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
 install(PROGRAMS
-  # scripts/mppi_node.py
-  # scripts/vis_node.py
   scripts/mppi_node.py
   scripts/vis_node.py
+  scripts/infer_env.py
+  scripts/mppi_tracking.py
   DESTINATION lib/${PROJECT_NAME}
 )
+
+# Install utils directory
+install(DIRECTORY
+  scripts/utils/
+  DESTINATION lib/${PROJECT_NAME}/utils
+  FILES_MATCHING
+  PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
+
+# Install dynamics_models directory
+install(DIRECTORY
+  scripts/dynamics_models/
+  DESTINATION lib/${PROJECT_NAME}/dynamics_models
+  FILES_MATCHING
+  PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
