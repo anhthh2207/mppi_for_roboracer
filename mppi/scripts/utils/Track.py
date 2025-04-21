@@ -501,7 +501,8 @@ class Track:
         config.wpt_vind = int(map_info[6])
         config.s_frame_max = -1
         
-        waypoints = np.loadtxt(MAP_DIR + config.wpt_path, delimiter=config.wpt_delim, skiprows=config.wpt_rowskip)
+        # waypoints = np.loadtxt(MAP_DIR + config.wpt_path, delimiter=config.wpt_delim, skiprows=config.wpt_rowskip)
+        waypoints = np.loadtxt(pathlib.Path(MAP_DIR).joinpath(config.wpt_path), delimiter=config.wpt_delim, skiprows=config.wpt_rowskip)
         if reverse: # NOTE: reverse map
             waypoints = waypoints[::-1]
         waypoints[:, config.wpt_yind] = waypoints[:, config.wpt_yind] * scale

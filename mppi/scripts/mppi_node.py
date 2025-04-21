@@ -26,6 +26,8 @@ base_dir = os.path.dirname(os.path.realpath(__file__))
 config_path = os.path.join(base_dir, 'config.yaml')
 config_path = os.path.abspath(config_path)
 
+map_dir = os.path.join(base_dir, 'waypoints')
+map_dir = os.path.abspath(map_dir)
 map_path = os.path.join(base_dir, 'waypoints', 'map_info.txt')
 map_path = os.path.abspath(map_path)
 
@@ -47,8 +49,7 @@ class MPPI_Node(Node):
         # map_info = np.genfromtxt(self.config.map_dir + 'map_info.txt', delimiter='|', dtype='str')
         map_info = np.genfromtxt(map_path, delimiter='|', dtype=str)
         # track, self.config = Track.load_map(self.config.map_dir, map_info, self.config.map_ind, self.config)
-        breakpoint()
-        track, self.config = Track.load_map(map_path, map_info, self.config.map_ind, self.config)
+        track, self.config = Track.load_map(map_dir, map_info, self.config.map_ind, self.config)
         # track.waypoints[:, 3] += 0.5 * np.pi
         self.infer_env = InferEnv(track, self.config, DT=self.config.sim_time_step)
         self.mppi = MPPI(self.config, self.infer_env, jrng)
