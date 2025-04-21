@@ -62,7 +62,7 @@ class MPPI_Node(Node):
         self.mppi.update(jnp.asarray(state_c_0), jnp.asarray(reference_traj))
         self.get_logger().info('MPPI initialized')
         
-        
+        breakpoint()
         qos = rclpy.qos.QoSProfile(history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
                                    depth=1,
                                    reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
