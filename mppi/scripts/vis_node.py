@@ -6,8 +6,24 @@ from rclpy.node import Node
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import MultiArrayDimension, Float32MultiArray
-from ros_np_multiarray import to_multiarray_f32, to_numpy_f32
-from QtMatplotlib import QtPlotter
+# from ros_np_multiarray import to_multiarray_f32, to_numpy_f32
+# from QtMatplotlib import QtPlotter
+from utils.ros_np_multiarray import to_multiarray_f32, to_numpy_f32
+import matplotlib.pyplot as plt
+from std_msgs.msg import Header
+from visualization_msgs.msg import Marker, MarkerArray
+
+class QtPlotter:
+    def __init__(self):
+        self.fig, self.ax = plt.subplots()
+        plt.ion()
+        self.fig.show()
+
+    def scatter(self, x, y, c=None, s=20, plot_num=0, live=1):
+        self.ax.clear()
+        scatter = self.ax.scatter(x, y, c=c, s=s)
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
 
 
 class Visualizer_Node(Node):
@@ -58,37 +74,62 @@ class Visualizer_Node(Node):
         self.opt_traj_f = opt_traj_arr[10:]
         self.opt_traj_pub.publish(opt_traj_msg)
 
-    def waypoints_to_markerArray(self, waypoints, max_num, xind, yind, r=0.0, g=1.0, b=0.0):
-        # Publish the reference trajectory
+    def waypoints_to_markerArray(self, waypoints, max_num, xind, yind, r=0.0, g=1.0, b=0.0, mode="line"):
         array = MarkerArray()
 
-        for i in range(max_num):
-            message = Marker()
-            message.header.frame_id = "map"
-            message.header.stamp = self.get_clock().now().to_msg()
-            message.type= Marker.SPHERE
-            message.id=i
-            message.pose.orientation.x=0.0
-            message.pose.orientation.y=0.0
-            message.pose.orientation.z=0.0
-            message.pose.orientation.w=1.0
-            message.scale.x=0.2
-            message.scale.y=0.2
-            message.scale.z=0.2
-            message.color.a=1.0
-            message.color.r=r
-            message.color.b=g
-            message.color.g=b
-            if i < waypoints.shape[0]:
-                message.pose.position.x=float(waypoints[i,xind])
-                message.pose.position.y=float(waypoints[i,yind])
-                message.action = Marker.ADD
-            else:
-                message.pose.position.x=0.
-                message.pose.position.y=0.
-                message.action = Marker.DELETE
-            message.pose.position.z=0.0
-            array.markers.append(message)
+        header = Header()
+        header.frame_id = "map"
+        header.stamp = self.get_clock().now().to_msg()
+
+        if mode == "line":
+            line_marker = Marker()
+            line_marker.header = header
+            line_marker.ns = "waypoint_line"
+            line_marker.id = 0
+            line_marker.type = Marker.LINE_STRIP
+            line_marker.action = Marker.ADD
+            line_marker.scale.x = 0.1  # Line width
+            line_marker.color.a = 1.0
+            line_marker.color.r = r
+            line_marker.color.g = g
+            line_marker.color.b = b
+            line_marker.pose.orientation.w = 1.0
+
+            for i in range(min(max_num, waypoints.shape[0])):
+                pt = Point()
+                pt.x = float(waypoints[i, xind])
+                pt.y = float(waypoints[i, yind])
+                pt.z = 0.0
+                line_marker.points.append(pt)
+
+            array.markers.append(line_marker)
+
+        elif mode == "points": 
+            for i in range(max_num):
+                marker = Marker()
+                marker.header = header
+                marker.ns = "waypoint_spheres"
+                marker.id = i
+                marker.type = Marker.SPHERE
+                marker.action = Marker.ADD if i < waypoints.shape[0] else Marker.DELETE
+                marker.pose.orientation.w = 1.0
+                marker.scale.x = marker.scale.y = marker.scale.z = 0.2
+                marker.color.a = 1.0
+                marker.color.r = r
+                marker.color.g = g
+                marker.color.b = b
+
+                if i < waypoints.shape[0]:
+                    marker.pose.position.x = float(waypoints[i, xind])
+                    marker.pose.position.y = float(waypoints[i, yind])
+                else:
+                    marker.pose.position.x = marker.pose.position.y = 0.0
+
+                marker.pose.position.z = 0.0
+                array.markers.append(marker)
+                
+        else:
+            raise NotImplementedError(f"Mode '{mode}' is not implemented in waypoints_to_markerArray.")
 
         return array
 
