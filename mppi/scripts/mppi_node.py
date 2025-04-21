@@ -19,6 +19,7 @@ import utils.utils as utils
 from utils.jax_utils import numpify
 import utils.jax_utils as jax_utils
 from utils.Track import Track
+# The following line is commented out as it is not currently in use: #########################
 # jax.config.update("jax_compilation_cache_dir", "/home/nvidia/jax_cache") 
 
 import os
