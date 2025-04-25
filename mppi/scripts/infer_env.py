@@ -82,18 +82,47 @@ class InferEnv():
         self.diff = self.waypoints[1:, 1:3] - self.waypoints[:-1, 1:3]
         self.waypoints_distances = np.linalg.norm(self.waypoints[1:, (1, 2)] - self.waypoints[:-1, (1, 2)], axis=1)
     
-    @partial(jax.jit, static_argnums=(0,))
+    # @partial(jax.jit, static_argnums=(0,))
+    # def reward_fn_xy(self, state, reference):
+    #     """
+    #     reward function for the state s with respect to the reference trajectory
+    #     """
+    #     xy_cost = -jnp.linalg.norm(reference[1:, :2] - state[:, :2], ord=1, axis=1)
+    #     vel_cost = -jnp.linalg.norm(reference[1:, 2] - state[:, 3])
+    #     yaw_cost = -jnp.abs(jnp.sin(reference[1:, 3]) - jnp.sin(state[:, 4])) - \
+    #                 jnp.abs(jnp.cos(reference[1:, 4]) - jnp.cos(state[:, 4]))
+
+
+    #     # return 1000*xy_cost + 5*vel_cost + 25*yaw_cost # old: 25
+    #     return xy_cost
+
     def reward_fn_xy(self, state, reference):
         """
-        reward function for the state s with respect to the reference trajectory
+        Reward function for the state s with respect to the reference trajectory.
+        Dynamically computes curvature and applies it as a weight to the xy_cost.
         """
+        # Calculate curvature from reference (x, y)
+        x = reference[1:, 0]
+        y = reference[1:, 1]
+        dx = jnp.gradient(x)
+        dy = jnp.gradient(y)
+        ddx = jnp.gradient(dx)
+        ddy = jnp.gradient(dy)
+        curvature = jnp.abs(dx * ddy - dy * ddx) / (dx**2 + dy**2 + 1e-6) ** 1.5
+
+        curv_min = jnp.min(curvature)
+        curv_max = jnp.max(curvature)
+        norm_curv = (curvature - curv_min) / (curv_max - curv_min + 1e-6)
+        curvature_weight = 1.0 + 2.0 * norm_curv  # 1 (straight) to 3 (sharp turn)
+
         xy_cost = -jnp.linalg.norm(reference[1:, :2] - state[:, :2], ord=1, axis=1)
         vel_cost = -jnp.linalg.norm(reference[1:, 2] - state[:, 3])
-        yaw_cost = -jnp.abs(jnp.sin(reference[1:, 3]) - jnp.sin(state[:, 4])) - \
-            jnp.abs(jnp.cos(reference[1:, 4]) - jnp.cos(state[:, 4]))
-            
-        # return 20*xy_cost + 15*vel_cost + 1*yaw_cost
-        return xy_cost
+        yaw_cost = -jnp.abs(jnp.sin(reference[1:, 3]) - jnp.sin(state[:, 4])) \
+                - jnp.abs(jnp.cos(reference[1:, 4]) - jnp.cos(state[:, 4]))
+
+        weighted_xy_cost = curvature_weight**2 * xy_cost # heavily penalize the errors at the high curvature position
+
+        return 1000 * weighted_xy_cost + 5 * vel_cost + 25 * yaw_cost
     
     
     def calc_ref_trajectory_kinematic(self, state, cx, cy, cyaw, sp):
