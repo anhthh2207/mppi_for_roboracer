@@ -129,7 +129,26 @@ class MPPI():
         # R_stdzd = R - jnp.max(R) # [n_samples] np.float32
         R_stdzd = (R - jnp.max(R)) / ((jnp.max(R) - jnp.min(R)) + self.damping)  # pylint: disable=invalid-name
         w = jnp.exp(R_stdzd / self.temperature)  # [n_samples] np.float32
+
+        
+        def top_k_mask(w, k=100):
+            # Find the threshold value for the top-k elements
+            kth_largest = jnp.partition(w, -k)[-k]
+            # Mask: 1 for elements >= kth_largest, 0 otherwise
+            mask = (w >= kth_largest).astype(w.dtype)
+            return mask
+        mask = top_k_mask(w, k=100)
+        w = w * mask
+                
+
         w = w/jnp.sum(w)  # [n_samples] np.float32
+
+        
+        # max_idx = jnp.argmax(w)
+        # mask = jnp.zeros_like(w)
+        # mask = mask.at[max_idx].set(1)
+        # return mask
+    
         return w
     
     
