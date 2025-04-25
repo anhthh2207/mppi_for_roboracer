@@ -27,7 +27,7 @@ class QtPlotter:
 
 
 class Visualizer_Node(Node):
-    def __init__(self):
+    def __init__(self, index=0):
         super().__init__('visualizer_node')
         self.obs_max_num = 108
         self.reference_max_num = 100
@@ -36,13 +36,13 @@ class Visualizer_Node(Node):
         self.opt_traj_f = None
 
         # publishers
-        self.reference_pub = self.create_publisher(MarkerArray, "/vis/reference", 1)
-        self.opt_traj_pub = self.create_publisher(MarkerArray, "/vis/opt_traj", 1)
-        self.obstacle_pub = self.create_publisher(MarkerArray, "/vis/obstacle", 1)
+        self.reference_pub = self.create_publisher(MarkerArray, f"/vis/reference{index}", 1)
+        self.opt_traj_pub = self.create_publisher(MarkerArray, f"/vis/opt_traj{index}", 1)
+        self.obstacle_pub = self.create_publisher(MarkerArray, f"/vis/obstacle{index}", 1)
         
         self.frenet_pose_sub = self.create_subscription(Float32MultiArray, "/frenet_pose", self.frenet_pose_callback, 1)
-        self.reference_sub = self.create_subscription(Float32MultiArray, "/reference_arr", self.reference_callback, 1)
-        self.opt_traj_sub = self.create_subscription(Float32MultiArray, "/opt_traj_arr", self.opt_traj_callback, 1)
+        self.reference_sub = self.create_subscription(Float32MultiArray, f"/reference_arr{index}", self.reference_callback, 1)
+        self.opt_traj_sub = self.create_subscription(Float32MultiArray, f"/opt_traj_arr{index}", self.opt_traj_callback, 1)
         self.obstacle_sub = self.create_subscription(Float32MultiArray, "/obstacle_arr_xy", self.obstacle_callback, 1)
         self.reward_sub = self.create_subscription(Float32MultiArray, "/reward_arr", self.reward_callback, 1)
 

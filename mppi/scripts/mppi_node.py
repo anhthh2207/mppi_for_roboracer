@@ -44,8 +44,6 @@ class MPPI_Node(Node):
         map_path = os.path.join(base_dir, 'waypoints', map_info)
         map_path = os.path.abspath(map_path)
 
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file)
 
         # self.config.load_file('./config.yaml')
         self.config.load_file(config_path)
