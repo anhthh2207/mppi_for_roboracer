@@ -51,32 +51,49 @@ class PurePursuit(Node):
         wp_path = waypoint_path
 
         df = pd.read_csv(wp_path, sep=';', skiprows=2)
-        self.trajectory = np.array(df)[:, 1:3]
+        self.trajectory = np.array(df)[:, 1:]
 
         self.look_ahead = lookahead ## NOTE: increase this to reduce responsiveness, less wobbling, old: 2.0
         self.speed = speed
 
     def pose_callback(self, pose_msg):
-        trajectory = self.trajectory ## NOTE: Downsample to reduce responsiveness 
+        trajectory = self.trajectory[::5, :] ## NOTE: Downsample to reduce responsiveness 
+        
 
         # TODO: find the current waypoint to track using methods mentioned in lecture
-        lookahead = self.look_ahead
         vehicle_pose = self.locate_vehicle(pose_msg)
+        closest_point_idx = self.find_closetpoint(trajectory, vehicle_pose)
+        lookahead = trajectory[closest_point_idx, -1]
+        # lookahead = self.look_ahead       # fox fix loodahead
+ 
         # print(f'x {vehicle_pose[0]:.4f}, y {vehicle_pose[1]:.4f}, yaw {vehicle_pose[2]:.4f}, speed {vehicle_pose[3]:.4f}')
         target_pose = self.find_waypoint(trajectory, vehicle_pose, lookahead)
         self.visualize([target_pose[:2]], color=(1.0, 0.0, 0.0), duration=1)
 
         # TODO: transform goal point to vehicle frame of reference
-        vehicle_coordinate = self.global2vehicle_frame(target_pose[:2], vehicle_pose)
+        # print(f'target_pose[:2] shape {target_pose[:2].shape}')
+        vehicle_coordinate = self.global2vehicle_frame(np.expand_dims(target_pose[:2], axis=0), vehicle_pose)
+        vehicle_coordinate = np.squeeze(vehicle_coordinate, axis=0)
+        # print(f'vehicle_coordinate shape {vehicle_coordinate.shape}')
+
 
         # TODO: calculate curvature/steering angle
         curvature = self.calculate_curvature(vehicle_coordinate)
         speed, steering_angle = self.calculate_driving_msg(curvature)
 
+        ############################
+        speed = trajectory[closest_point_idx, -2] 
+        # speed = np.clip(speed * 1.1, 0, 5.5)
+
+        self.visualize([trajectory[closest_point_idx, :2]], color=(0.0, 1.0, 0.0), duration=1, target=False)
+
+
+        # print(f'look ahead idx = {}')
+
         # speed = target_pose[-1]
         steering_angle = steering_angle + self.stanley_term(vehicle_pose, trajectory, speed, k=1.5)
         # print(f'stanley term contrition {(self.stanley_term(vehicle_pose, trajectory, speed)/steering_angle)*100:.2f}')
-        speed = self.speed
+        # speed = 5.0
         # TODO: publish drive message, don't forget to limit the steering angle.
         self.publish_driving_msg(speed, steering_angle)
 
@@ -102,6 +119,16 @@ class PurePursuit(Node):
         ]))
 
         return np.array([x, y, yaw, speed])
+
+    def find_closetpoint(self, trajectory, vehicle_pose):
+        x, y, yaw, speed = vehicle_pose[0], vehicle_pose[1], vehicle_pose[2], vehicle_pose[3]
+
+        position = np.array([[x, y]] * len(trajectory))
+        diff = position - trajectory[:, :2]
+        dist = np.sqrt(np.sum(diff**2, axis=1))
+         
+        closest_point_idx = np.argmin(dist)
+        return closest_point_idx
 
     def find_waypoint(self, trajectory, vehicle_pose, lookahead):
         """Find the current waypoint to track.
@@ -129,32 +156,58 @@ class PurePursuit(Node):
         self.find_localwp =True
 
         # Convert candidate waypoints to the vehicle coordinate frame
-        vehicle_coordinate = []
-        for candidate in trajectory[local_indices]:
-            vehicle_coordinate.append(self.global2vehicle_frame(candidate[:2], vehicle_pose))
-        vehicle_coordinate = np.array(vehicle_coordinate)
+        # vehicle_coordinate = []
+        # for candidate in trajectory[local_indices]:
+        #     vehicle_coordinate.append(self.global2vehicle_frame(candidate[:2], vehicle_pose))
+        # vehicle_coordinate = np.array(vehicle_coordinate)
+        vehicle_coordinate = self.global2vehicle_frame(trajectory[local_indices, :2], vehicle_pose)
+        # print(f'vehicle_coord {vehicle_coordinate.shape}')
+
         # Choose the candidate with maximum x (farthest in front)
         target_idx = local_indices[np.argmax(vehicle_coordinate[:,0])] ## max x
         target_pose = trajectory[target_idx]
 
         return target_pose
 
-    def global2vehicle_frame(self, global_coordinate, vehicle_pose):
-        """Transform a global coordinate to the vehicle's frame.
+    # def global2vehicle_frame(self, global_coordinate, vehicle_pose):
+    #     """Transform a global coordinate to the vehicle's frame.
+
+    #     Args:
+    #         global_coordinate (np.array): (2,) global coordinate (x, y)
+    #         vehicle_pose (np.array): (4,) vehicle pose [x, y, yaw, speed]
+
+    #     Returns:
+    #         np.array: (2,) coordinate in the vehicle frame.
+    #     """
+    #     diff = global_coordinate - vehicle_pose[:2]
+    #     dx, dy = diff[0], diff[1]
+    #     yaw = vehicle_pose[2]
+    #     vehicle_coordinate = np.array([np.cos(yaw) * dx + np.sin(yaw) * dy, 
+    #                                    -np.sin(yaw) * dx + np.cos(yaw) * dy])
+    #     return vehicle_coordinate
+
+    def global2vehicle_frame(self, global_coordinates, vehicle_pose):
+        """Transform global coordinates to the vehicle's frame using vectorized operations.
 
         Args:
-            global_coordinate (np.array): (2,) global coordinate (x, y)
+            global_coordinates (np.array): (n, 2) array of global coordinates (x, y)
             vehicle_pose (np.array): (4,) vehicle pose [x, y, yaw, speed]
 
         Returns:
-            np.array: (2,) coordinate in the vehicle frame.
+            np.array: (n, 2) array of coordinates in the vehicle frame.
         """
-        diff = global_coordinate - vehicle_pose[:2]
-        dx, dy = diff[0], diff[1]
+        diff = global_coordinates - vehicle_pose[:2]  # Difference in x, y (n, 2)
+        dx, dy = diff[:, 0], diff[:, 1]  # Extract x and y differences
+
         yaw = vehicle_pose[2]
-        vehicle_coordinate = np.array([np.cos(yaw) * dx + np.sin(yaw) * dy, 
-                                       -np.sin(yaw) * dx + np.cos(yaw) * dy])
-        return vehicle_coordinate
+        
+        # Vectorized transformation using broadcasting
+        vehicle_coordinates = np.column_stack((
+            np.cos(yaw) * dx + np.sin(yaw) * dy,  # x in vehicle frame
+            -np.sin(yaw) * dx + np.cos(yaw) * dy  # y in vehicle frame
+        ))
+    
+        return vehicle_coordinates
     
 
     def calculate_curvature(self, vehicle_coordinate):
@@ -186,7 +239,7 @@ class PurePursuit(Node):
         drive_msg.drive.speed = speed
         self.publisher.publish(drive_msg)
 
-    def visualize(self, points, color=(0.0, 1.0, 0.0), duration=0, size=0.2):
+    def visualize(self, points, color=(0.0, 1.0, 0.0), duration=0, target=True):
         """Visualize points
 
         Args:
@@ -200,7 +253,7 @@ class PurePursuit(Node):
         marker.ns, marker.id, marker.type, marker.action = "point", 0, Marker.SPHERE_LIST, Marker.ADD
 
         # Scale of the sphere (in meters)
-        marker.scale.x = marker.scale.y = marker.scale.z = size
+        marker.scale.x = marker.scale.y = marker.scale.z = 0.2
 
         # setup color and duration
         marker.color.r, marker.color.g, marker.color.b = color[0], color[1], color[2]
@@ -208,7 +261,10 @@ class PurePursuit(Node):
         marker.lifetime = Duration(sec=duration)
         marker.points = [Point(x=x, y=y, z=0.0) for x, y in points]
         
-        self.goal_visualizer.publish(marker)
+        if target:
+            self.goal_visualizer.publish(marker)
+        else:
+            self.speed_visualizer.publish(marker)
 
     def stanley_term(self, vehicle_pose, trajectory, speed, k=1.0):
         diff = vehicle_pose[:2] - trajectory[:, :2]
@@ -216,7 +272,6 @@ class PurePursuit(Node):
         err = np.min(dist)
         offset = np.arctan((k*err)/(speed+1e-10))
         return offset
-    
 
 
 def main(args=None):

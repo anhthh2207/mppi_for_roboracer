@@ -156,25 +156,29 @@ class MPPI_Node(Node):
         if current_speed < 0.5:
             self.start_time = time.time()
 
-        if time.time() - self.start_time <= self.depart_time:
-            pp_trajectory = self.pure_pursuit.trajectory
-            pp_lookahead = self.pure_pursuit.look_ahead
-            pp_vehicle_pose = self.pure_pursuit.locate_vehicle(pose_msg)
-            pp_target_pose = self.pure_pursuit.find_waypoint(pp_trajectory, pp_vehicle_pose, pp_lookahead)
-            self.pure_pursuit.visualize([pp_target_pose[:2]], color=(1.0, 0.0, 0.0), duration=1, size=0.3)
+        pp_trajectory = self.pure_pursuit.trajectory 
+        
+        pp_vehicle_pose = self.pure_pursuit.locate_vehicle(pose_msg)
+        pp_closest_point_idx = self.pure_pursuit.find_closetpoint(pp_trajectory, pp_vehicle_pose)
+        # ref_speed = pp_trajectory[pp_closest_point_idx, -1] # NOTE: enable this for speed profiling
 
-            pp_vehicle_coordinate = self.pure_pursuit.global2vehicle_frame(pp_target_pose[:2], pp_vehicle_pose)
+        if time.time() - self.start_time <= self.depart_time:
+            pp_lookahead = self.pure_pursuit.look_ahead       # fox fix loodahead
+    
+            pp_target_pose = self.pure_pursuit.find_waypoint(pp_trajectory, pp_vehicle_pose, pp_lookahead)
+            self.pure_pursuit.visualize([pp_target_pose[:2]], color=(1.0, 0.0, 0.0), duration=1)
+
+            pp_vehicle_coordinate = self.pure_pursuit.global2vehicle_frame(np.expand_dims(pp_target_pose[:2], axis=0), pp_vehicle_pose)
+            pp_vehicle_coordinate = np.squeeze(pp_vehicle_coordinate, axis=0)
 
             pp_curvature = self.pure_pursuit.calculate_curvature(pp_vehicle_coordinate)
             _, pp_steering_angle = self.pure_pursuit.calculate_driving_msg(pp_curvature)
-
-            # pp_steering_angle = pp_steering_angle + self.pure_pursuit.stanley_term(pp_vehicle_pose, pp_trajectory, pp_speed, k=1.5)
 
             drive_msg = AckermannDriveStamped()
             drive_msg.header.stamp = self.get_clock().now().to_msg()
             drive_msg.header.frame_id = "base_link"
             drive_msg.drive.steering_angle = pp_steering_angle
-            drive_msg.drive.speed = self.pure_pursuit.speed
+            drive_msg.drive.speed = 5.0
             self.drive_pub.publish(drive_msg)
             print(f'Pure Pursuit mode {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
 
@@ -190,7 +194,9 @@ class MPPI_Node(Node):
             drive_msg.header.stamp = self.get_clock().now().to_msg()
             drive_msg.header.frame_id = "base_link"
             drive_msg.drive.steering_angle = self.control[0]
-            drive_msg.drive.speed = self.control[1]
+            # drive_msg.drive.speed = self.control[1] ###### NOTE: this follow the reference speed in config file
+            # drive_msg.drive.speed = ref_speed               # NOTE: enable this for speed profiling
+            drive_msg.drive.speed = 6.0 if abs(self.control[0]) <= np.radians(10) else 5.0         
             # self.get_logger().info(f"Steering Angle: {drive_msg.drive.steering_angle}, Speed: {drive_msg.drive.speed}")
             self.drive_pub.publish(drive_msg)
         
