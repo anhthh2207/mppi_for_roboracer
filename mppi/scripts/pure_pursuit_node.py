@@ -51,8 +51,8 @@ class PurePursuit(Node):
 
         # visualize trajectory and target waypoint
         # self.goal_visualizer = self.create_publisher(Marker, 'pp_target', 10)
-        self.goal_visualizer = self.create_publisher(Marker, 'target', 10)
-        self.speed_visualizer = self.create_publisher(Marker, 'speed', 10)
+        self.goal_visualizer = self.create_publisher(Marker, 'pp_target', 10)
+        self.speed_visualizer = self.create_publisher(Marker, 'pp_speed', 10)
 
         # load trajectory
         wp_path = waypoint_path
