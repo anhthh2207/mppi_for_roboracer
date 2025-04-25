@@ -19,9 +19,11 @@ import utils.utils as utils
 from utils.jax_utils import numpify
 import utils.jax_utils as jax_utils
 from utils.Track import Track
+from pure_pursuit_node import PurePursuit
+import time as time
 # The following line is commented out as it is not currently in use: #########################
 # jax.config.update("jax_compilation_cache_dir", "/home/nvidia/jax_cache") 
-
+import yaml
 import os
 base_dir = os.path.dirname(os.path.realpath(__file__))
 config_path = os.path.join(base_dir, 'config.yaml')
@@ -32,6 +34,8 @@ map_dir = os.path.abspath(map_dir)
 map_path = os.path.join(base_dir, 'waypoints', 'map_info.txt')
 map_path = os.path.abspath(map_path)
 
+with open(config_path, 'r') as file:
+    config = yaml.safe_load(file)
 
 ## This is a demosntration of how to use the MPPI planner with the Roboracer
 ## Zirui Zang 2025/04/07
@@ -75,6 +79,14 @@ class MPPI_Node(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", qos)
         self.reference_pub = self.create_publisher(Float32MultiArray, "/reference_arr", qos)
         self.opt_traj_pub = self.create_publisher(Float32MultiArray, "/opt_traj_arr", qos)
+
+
+        # pure pursuit node for explosive start
+        self.pure_pursuit = PurePursuit(speed=config['pp_vel'], lookahead=2.0)
+        self.start_time = time.time()
+        self.depart_time = 2.0
+
+        self.pp_active = True # NOTE: this parameter is just to print out what mode is running
 
     def pose_callback(self, pose_msg):
         """
@@ -135,14 +147,52 @@ class MPPI_Node(Node):
             self.control = np.array([0.0, 0.0])
             self.mppi.a_opt = np.zeros_like(self.mppi.a_opt)
 
-        # Publish the control command
-        drive_msg = AckermannDriveStamped()
-        drive_msg.header.stamp = self.get_clock().now().to_msg()
-        drive_msg.header.frame_id = "base_link"
-        drive_msg.drive.steering_angle = self.control[0]
-        drive_msg.drive.speed = self.control[1]
-        # self.get_logger().info(f"Steering Angle: {drive_msg.drive.steering_angle}, Speed: {drive_msg.drive.speed}")
-        self.drive_pub.publish(drive_msg)
+
+        current_speed = np.linalg.norm(np.array([
+            pose_msg.twist.twist.linear.x,
+            pose_msg.twist.twist.linear.y,
+            pose_msg.twist.twist.linear.z,
+        ]))
+        if current_speed < 0.5:
+            self.start_time = time.time()
+
+        if time.time() - self.start_time <= self.depart_time:
+            pp_trajectory = self.pure_pursuit.trajectory
+            pp_lookahead = self.pure_pursuit.look_ahead
+            pp_vehicle_pose = self.pure_pursuit.locate_vehicle(pose_msg)
+            pp_target_pose = self.pure_pursuit.find_waypoint(pp_trajectory, pp_vehicle_pose, pp_lookahead)
+            self.pure_pursuit.visualize([pp_target_pose[:2]], color=(1.0, 0.0, 0.0), duration=1, size=0.3)
+
+            pp_vehicle_coordinate = self.pure_pursuit.global2vehicle_frame(pp_target_pose[:2], pp_vehicle_pose)
+
+            pp_curvature = self.pure_pursuit.calculate_curvature(pp_vehicle_coordinate)
+            _, pp_steering_angle = self.pure_pursuit.calculate_driving_msg(pp_curvature)
+
+            # pp_steering_angle = pp_steering_angle + self.pure_pursuit.stanley_term(pp_vehicle_pose, pp_trajectory, pp_speed, k=1.5)
+
+            drive_msg = AckermannDriveStamped()
+            drive_msg.header.stamp = self.get_clock().now().to_msg()
+            drive_msg.header.frame_id = "base_link"
+            drive_msg.drive.steering_angle = pp_steering_angle
+            drive_msg.drive.speed = self.pure_pursuit.speed
+            self.drive_pub.publish(drive_msg)
+            print(f'Pure Pursuit mode {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+
+            self.pp_active = True
+        
+        else:
+            if self.pp_active:  
+                print(f'Switched to MPPI mode {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+                self.pp_active = False 
+
+            # Publish the control command
+            drive_msg = AckermannDriveStamped()
+            drive_msg.header.stamp = self.get_clock().now().to_msg()
+            drive_msg.header.frame_id = "base_link"
+            drive_msg.drive.steering_angle = self.control[0]
+            drive_msg.drive.speed = self.control[1]
+            # self.get_logger().info(f"Steering Angle: {drive_msg.drive.steering_angle}, Speed: {drive_msg.drive.speed}")
+            self.drive_pub.publish(drive_msg)
         
 
 def main(args=None):

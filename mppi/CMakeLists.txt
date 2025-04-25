@@ -53,6 +53,7 @@ ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
   scripts/mppi_node.py
+  scripts/pure_pursuit_node.py
   scripts/vis_node.py
   scripts/infer_env.py
   scripts/mppi_tracking.py
