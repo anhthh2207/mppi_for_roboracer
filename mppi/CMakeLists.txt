@@ -54,6 +54,9 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/mppi_node.py
   scripts/pure_pursuit_node.py
+  scripts/reactive_node.py
+  scripts/disparity_extender.py
+  scripts/master_node.py
   scripts/vis_node.py
   scripts/infer_env.py
   scripts/mppi_tracking.py

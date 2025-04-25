@@ -26,24 +26,27 @@ import time as time
 import yaml
 import os
 base_dir = os.path.dirname(os.path.realpath(__file__))
-config_path = os.path.join(base_dir, 'config.yaml')
-config_path = os.path.abspath(config_path)
 
-map_dir = os.path.join(base_dir, 'waypoints')
-map_dir = os.path.abspath(map_dir)
-map_path = os.path.join(base_dir, 'waypoints', 'map_info.txt')
-map_path = os.path.abspath(map_path)
-
-with open(config_path, 'r') as file:
-    config = yaml.safe_load(file)
 
 ## This is a demosntration of how to use the MPPI planner with the Roboracer
 ## Zirui Zang 2025/04/07
 
 class MPPI_Node(Node):
-    def __init__(self):
+    def __init__(self, index=0, config='config.yaml', map_info='map_info.txt'):
         super().__init__('lmppi_node')
         self.config = utils.ConfigYAML()
+
+        config_path = os.path.join(base_dir, config)
+        config_path = os.path.abspath(config_path)
+
+        map_dir = os.path.join(base_dir, 'waypoints')
+        map_dir = os.path.abspath(map_dir)
+        map_path = os.path.join(base_dir, 'waypoints', map_info)
+        map_path = os.path.abspath(map_path)
+
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+
         # self.config.load_file('./config.yaml')
         self.config.load_file(config_path)
         self.config.norm_params = np.array(self.config.norm_params).T
@@ -64,32 +67,33 @@ class MPPI_Node(Node):
         self.control = np.asarray([0.0, 0.0])
         reference_traj, waypoint_ind = self.infer_env.get_refernece_traj(state_c_0.copy(), self.config.ref_vel, self.config.n_steps)
         self.mppi.update(jnp.asarray(state_c_0), jnp.asarray(reference_traj))
-        self.get_logger().info('MPPI initialized')
+        self.get_logger().info(f'MPPI {index} initialized')
         
         qos = rclpy.qos.QoSProfile(history=rclpy.qos.QoSHistoryPolicy.KEEP_LAST,
                                    depth=1,
                                    reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
                                    durability=rclpy.qos.QoSDurabilityPolicy.VOLATILE)
-        # create subscribers
-        if self.config.is_sim:
-            self.pose_sub = self.create_subscription(Odometry, "/ego_racecar/odom", self.pose_callback, qos)
-        else:
-            self.pose_sub = self.create_subscription(Odometry, "/pf/pose/odom", self.pose_callback, qos)
-        # publishers
-        self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", qos)
-        self.reference_pub = self.create_publisher(Float32MultiArray, "/reference_arr", qos)
-        self.opt_traj_pub = self.create_publisher(Float32MultiArray, "/opt_traj_arr", qos)
+        
+        if __name__ == '__main__':
+            # create subscribers
+            if self.config.is_sim:
+                self.pose_sub = self.create_subscription(Odometry, "/ego_racecar/odom", self.pose_callback, qos)
+            else:
+                self.pose_sub = self.create_subscription(Odometry, "/pf/pose/odom", self.pose_callback, qos)
+            # publishers
+            self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", qos)
+
+        else: 
+            self.pose_sub = None
+            self.drive_pub = None
+        
+        self.reference_pub = self.create_publisher(Float32MultiArray, f"/reference_arr{index}", qos)
+        self.opt_traj_pub = self.create_publisher(Float32MultiArray, f"/opt_traj_arr{index}", qos)
+
+        self.drive_msg = None
 
 
-        # pure pursuit node for explosive start
-        self.pure_pursuit = PurePursuit(speed=config['pp_vel'], lookahead=2.0)
-        self.start_time = time.time()
-        self.depart_time = 2.0
-
-        self.pp_active = True # NOTE: this parameter is just to print out what mode is running
-
-
-    def pose_callback(self, pose_msg):
+    def calculate_drive_msg(self, pose_msg):
         """
         Callback function for subscribing to particle filter's inferred pose.
         This funcion saves the current pose of the car and obtain the goal
@@ -147,64 +151,25 @@ class MPPI_Node(Node):
         if np.isnan(self.control).any() or np.isinf(self.control).any():
             self.control = np.array([0.0, 0.0])
             self.mppi.a_opt = np.zeros_like(self.mppi.a_opt)
-
-
-        current_speed = np.linalg.norm(np.array([
-            pose_msg.twist.twist.linear.x,
-            pose_msg.twist.twist.linear.y,
-            pose_msg.twist.twist.linear.z,
-        ]))
-        if current_speed < 0.5:
-            self.start_time = time.time()
-
-        pp_trajectory = self.pure_pursuit.trajectory 
         
-        pp_vehicle_pose = self.pure_pursuit.locate_vehicle(pose_msg)
-        pp_closest_point_idx = self.pure_pursuit.find_closetpoint(pp_trajectory, pp_vehicle_pose)
-        # ref_speed = pp_trajectory[pp_closest_point_idx, -1] # NOTE: enable this for speed profiling
+        # calculate driving message
+        self.drive_msg = AckermannDriveStamped()
+        self.drive_msg.header.stamp = self.get_clock().now().to_msg()
+        self.drive_msg.header.frame_id = "base_link"
+        self.drive_msg.drive.steering_angle = self.control[0]
+        # drive_msg.drive.speed = self.control[1] ###### NOTE: this follow the reference speed in config file
+        # drive_msg.drive.speed = ref_speed               # NOTE: enable this for speed profiling
+        # drive_msg.drive.speed = 6.0 if abs(self.control[0]) <= np.radians(10) else 5.0         
+        curvature = calc_xy_curvature_stats(reference_traj, mode='mean')
+        self.drive_msg.drive.speed = max(6.0, 7.0 * np.exp(-curvature * 1.5)) 
+        # drive_msg.drive.speed = max(4.0, 4.0 + 3.0 / (1.0 + curvature * 0.5)) 
 
-        if time.time() - self.start_time <= self.depart_time:
-            pp_lookahead = self.pure_pursuit.look_ahead       # fox fix loodahead
-    
-            pp_target_pose = self.pure_pursuit.find_waypoint(pp_trajectory, pp_vehicle_pose, pp_lookahead)
-            self.pure_pursuit.visualize([pp_target_pose[:2]], color=(1.0, 0.0, 0.0), duration=1)
-
-            pp_vehicle_coordinate = self.pure_pursuit.global2vehicle_frame(np.expand_dims(pp_target_pose[:2], axis=0), pp_vehicle_pose)
-            pp_vehicle_coordinate = np.squeeze(pp_vehicle_coordinate, axis=0)
-
-            pp_curvature = self.pure_pursuit.calculate_curvature(pp_vehicle_coordinate)
-            _, pp_steering_angle = self.pure_pursuit.calculate_driving_msg(pp_curvature)
-
-            drive_msg = AckermannDriveStamped()
-            drive_msg.header.stamp = self.get_clock().now().to_msg()
-            drive_msg.header.frame_id = "base_link"
-            drive_msg.drive.steering_angle = pp_steering_angle
-            drive_msg.drive.speed = 5.0
-            self.drive_pub.publish(drive_msg)
-            print(f'Pure Pursuit mode {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-
-            self.pp_active = True
+        print(f'Curvature: {curvature}, Speed: {self.drive_msg.drive.speed}')
         
-        else:
-            if self.pp_active:  
-                print(f'Switched to MPPI mode {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-                self.pp_active = False 
-
-            # Publish the control command
-            drive_msg = AckermannDriveStamped()
-            drive_msg.header.stamp = self.get_clock().now().to_msg()
-            drive_msg.header.frame_id = "base_link"
-            drive_msg.drive.steering_angle = self.control[0]
-            # drive_msg.drive.speed = self.control[1] ###### NOTE: this follow the reference speed in config file
-            # drive_msg.drive.speed = ref_speed               # NOTE: enable this for speed profiling
-            # drive_msg.drive.speed = 6.0 if abs(self.control[0]) <= np.radians(10) else 5.0         
-            curvature = calc_xy_curvature_stats(reference_traj, mode='mean')
-            drive_msg.drive.speed = max(6.0, 7.0 * np.exp(-curvature * 1.5)) 
-            # drive_msg.drive.speed = max(4.0, 4.0 + 3.0 / (1.0 + curvature * 0.5)) 
-
-            print(f'Curvature: {curvature}, Speed: {drive_msg.drive.speed}')
-            # self.get_logger().info(f"Steering Angle: {drive_msg.drive.steering_angle}, Speed: {drive_msg.drive.speed}")
-            self.drive_pub.publish(drive_msg)
+    def pose_callback(self, pose_msg):
+        self.get_logger().info(f"Node {self.get_name()}, pose callback is running")
+        self.calculate_drive_msg(pose_msg)
+        self.drive_pub.publish(self.drive_msg)
 
 
 def calc_xy_curvature_stats(ref_traj, mode='mean'):

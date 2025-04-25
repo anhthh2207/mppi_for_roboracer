@@ -34,18 +34,25 @@ class PurePursuit(Node):
     Implement Pure Pursuit on the car
     This is just a template, you are free to implement your own node!
     """
-    def __init__(self, speed=2.0, lookahead=2.0):
+    def __init__(self, speed=2.0, lookahead=1.5):
         super().__init__('pure_pursuit_node')
         # TODO: create ROS subscribers and publishers
         odom_topic = '/ego_racecar/odom' if config['is_sim'] else 'pf/pose/odom'
         drive_topic = '/drive'
 
-        self.odom_subscriber = self.create_subscription(Odometry, odom_topic, self.pose_callback, 10)
-        self.publisher = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
+        if __name__ == '__main__':
+            self.odom_subscriber = self.create_subscription(Odometry, odom_topic, self.pose_callback, 10)
+            self.publisher = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
+        else:
+            self.odom_subscriber = None
+            self.publisher = None
+        
         self.find_localwp = False
 
         # visualize trajectory and target waypoint
-        self.goal_visualizer = self.create_publisher(Marker, 'pp_target', 10)
+        # self.goal_visualizer = self.create_publisher(Marker, 'pp_target', 10)
+        self.goal_visualizer = self.create_publisher(Marker, 'target', 10)
+        self.speed_visualizer = self.create_publisher(Marker, 'speed', 10)
 
         # load trajectory
         wp_path = waypoint_path
@@ -56,15 +63,20 @@ class PurePursuit(Node):
         self.look_ahead = lookahead ## NOTE: increase this to reduce responsiveness, less wobbling, old: 2.0
         self.speed = speed
 
-    def pose_callback(self, pose_msg):
-        trajectory = self.trajectory[::5, :] ## NOTE: Downsample to reduce responsiveness 
+        self.drive_msg = None
+
+    def calculate_drive_msg(self, pose_msg, speed_profiling=False, lookahead_profiling=False):
+        # trajectory = self.trajectory[::5, :] ## NOTE: Downsample to reduce responsiveness 
+        trajectory = self.trajectory 
         
 
         # TODO: find the current waypoint to track using methods mentioned in lecture
         vehicle_pose = self.locate_vehicle(pose_msg)
         closest_point_idx = self.find_closetpoint(trajectory, vehicle_pose)
-        lookahead = trajectory[closest_point_idx, -1]
-        # lookahead = self.look_ahead       # fox fix loodahead
+        if lookahead_profiling:
+            lookahead = trajectory[closest_point_idx, -1]
+        else:
+            lookahead = self.look_ahead       # fox fix loodahead
  
         # print(f'x {vehicle_pose[0]:.4f}, y {vehicle_pose[1]:.4f}, yaw {vehicle_pose[2]:.4f}, speed {vehicle_pose[3]:.4f}')
         target_pose = self.find_waypoint(trajectory, vehicle_pose, lookahead)
@@ -79,10 +91,13 @@ class PurePursuit(Node):
 
         # TODO: calculate curvature/steering angle
         curvature = self.calculate_curvature(vehicle_coordinate)
-        speed, steering_angle = self.calculate_driving_msg(curvature)
+        speed, steering_angle = self.calculate_speed_n_angle(curvature)
 
         ############################
-        speed = trajectory[closest_point_idx, -2] 
+        if speed_profiling:
+            speed = trajectory[closest_point_idx, -1] ## NOTE: the last col
+        else:
+            speed = 5.0 
         # speed = np.clip(speed * 1.1, 0, 5.5)
 
         self.visualize([trajectory[closest_point_idx, :2]], color=(0.0, 1.0, 0.0), duration=1, target=False)
@@ -95,7 +110,11 @@ class PurePursuit(Node):
         # print(f'stanley term contrition {(self.stanley_term(vehicle_pose, trajectory, speed)/steering_angle)*100:.2f}')
         # speed = 5.0
         # TODO: publish drive message, don't forget to limit the steering angle.
-        self.publish_driving_msg(speed, steering_angle)
+
+        self.drive_msg = AckermannDriveStamped()
+        self.drive_msg.drive.steering_angle = steering_angle
+        self.drive_msg.drive.speed = speed
+
 
     def locate_vehicle(self, msg: Odometry):
         """Extract vehicle pose from the Odometry message.
@@ -223,7 +242,7 @@ class PurePursuit(Node):
         curvature = 2 * vehicle_coordinate[1] / L_2
         return curvature
     
-    def calculate_driving_msg(self, curvature):
+    def calculate_speed_n_angle(self, curvature):
         if self.find_localwp:
             speed = 6.0
         else:
@@ -233,11 +252,10 @@ class PurePursuit(Node):
         steering_angle = np.arctan(L * curvature)
         return speed, steering_angle
 
-    def publish_driving_msg(self, speed, steering_angle):
-        drive_msg = AckermannDriveStamped()
-        drive_msg.drive.steering_angle = steering_angle
-        drive_msg.drive.speed = speed
-        self.publisher.publish(drive_msg)
+    def pose_callback(self, pose_msg):
+        self.get_logger().info(f"Node {self.get_name()}, pose callback is running")
+        self.calculate_drive_msg(pose_msg)
+        self.publisher.publish(self.drive_msg)
 
     def visualize(self, points, color=(0.0, 1.0, 0.0), duration=0, target=True):
         """Visualize points
