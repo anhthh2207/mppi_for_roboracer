@@ -14,3 +14,6 @@ The code repository for the final race project of ESE 6150: F1/10 Autonomous Rac
 - [ ] Obstacle advoidance.
 - [ ] Setup MPPI on F1tenth car.
 - [ ] Finetune for the race.
+
+## Tips
+The waypoints should be dense, the step length should be arroud 0.1
