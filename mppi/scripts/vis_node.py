@@ -144,3 +144,5 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+# python3 <vis_node.py> --ros-args -p index:=0
