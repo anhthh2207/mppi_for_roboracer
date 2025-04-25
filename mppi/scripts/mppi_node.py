@@ -88,6 +88,7 @@ class MPPI_Node(Node):
 
         self.pp_active = True # NOTE: this parameter is just to print out what mode is running
 
+
     def pose_callback(self, pose_msg):
         """
         Callback function for subscribing to particle filter's inferred pose.
@@ -196,10 +197,45 @@ class MPPI_Node(Node):
             drive_msg.drive.steering_angle = self.control[0]
             # drive_msg.drive.speed = self.control[1] ###### NOTE: this follow the reference speed in config file
             # drive_msg.drive.speed = ref_speed               # NOTE: enable this for speed profiling
-            drive_msg.drive.speed = 6.0 if abs(self.control[0]) <= np.radians(10) else 5.0         
+            # drive_msg.drive.speed = 6.0 if abs(self.control[0]) <= np.radians(10) else 5.0         
+            curvature = calc_xy_curvature_stats(reference_traj, mode='mean')
+            drive_msg.drive.speed = max(6.0, 7.0 * np.exp(-curvature * 1.5)) 
+            # drive_msg.drive.speed = max(4.0, 4.0 + 3.0 / (1.0 + curvature * 0.5)) 
+
+            print(f'Curvature: {curvature}, Speed: {drive_msg.drive.speed}')
             # self.get_logger().info(f"Steering Angle: {drive_msg.drive.steering_angle}, Speed: {drive_msg.drive.speed}")
             self.drive_pub.publish(drive_msg)
-        
+
+
+def calc_xy_curvature_stats(ref_traj, mode='mean'):
+    """
+    Calculate mean or max curvature from x, y columns of reference trajectory.
+
+    Args:
+        ref_traj (np.ndarray or jnp.DeviceArray): shape (N, D), x = [:,0], y = [:,1]
+        mode (str): 'mean' or 'max'
+
+    Returns:
+        float: mean or max curvature
+    """
+
+    x = ref_traj[:, 0]
+    y = ref_traj[:, 1]
+    dx = np.gradient(x)
+    dy = np.gradient(y)
+    ddx = np.gradient(dx)
+    ddy = np.gradient(dy)
+
+    curvature = np.abs(dx * ddy - dy * ddx) / (dx ** 2 + dy ** 2) ** 1.5
+    curvature = np.nan_to_num(curvature)  # in case of division by zero
+
+    if mode == 'mean':
+        result = np.mean(curvature)
+    elif mode == 'max':
+        result = np.max(curvature)
+    else:
+        raise ValueError("kind must be 'mean' or 'max'")
+    return float(result)
 
 def main(args=None):
     rclpy.init(args=args)
