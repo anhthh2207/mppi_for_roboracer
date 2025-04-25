@@ -33,7 +33,7 @@ base_dir = os.path.dirname(os.path.realpath(__file__))
 
 class MPPI_Node(Node):
     def __init__(self, index=0, config='config.yaml', map_info='map_info.txt'):
-        super().__init__('lmppi_node')
+        super().__init__(f'lmppi_node{index}')
         self.config = utils.ConfigYAML()
 
         config_path = os.path.join(base_dir, config)

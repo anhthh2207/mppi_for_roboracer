@@ -22,8 +22,8 @@ norm_params:
 - - 6.0
   - -3.0
 random_seed: 527787
-ref_vel: 4.0
-pp_vel: 5.0
+ref_vel: 4.0        # dummy
+pp_vel: 5.0         # dummy
 render: 1
 s_frame_max: 62.12059091197948
 sim_time_step: 0.1

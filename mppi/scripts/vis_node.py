@@ -28,7 +28,7 @@ class QtPlotter:
 
 class Visualizer_Node(Node):
     def __init__(self, index=0):
-        super().__init__('visualizer_node')
+        super().__init__(f'visualizer_node{index}')
         self.obs_max_num = 108
         self.reference_max_num = 100
         self.opt_traj_max_num = 10

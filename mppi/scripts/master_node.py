@@ -35,9 +35,8 @@ from disparity_extender import DisparityExtender
 
 
 class MasterNode(Node):
-    def __init__(self):
+    def __init__(self, is_sim=True):
         super().__init__('land_switching')
-        
         self.pure_pursuit = PurePursuit(speed=4.0, lookahead=2.0)
         self.lane_selector = ReactiveFollowGap()
 
@@ -51,7 +50,7 @@ class MasterNode(Node):
                                 reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
                                 durability=rclpy.qos.QoSDurabilityPolicy.VOLATILE)
         # create subscribers
-        if self.config.is_sim:
+        if is_sim:
             self.pose_sub = self.create_subscription(Odometry, "/ego_racecar/odom", self.pose_callback, qos)
         else:
             self.pose_sub = self.create_subscription(Odometry, "/pf/pose/odom", self.pose_callback, qos)
@@ -69,7 +68,7 @@ class MasterNode(Node):
 
 
 def main(args=None):
-    return
+    # return
     rclpy.init(args=args)
     mppi_node = MasterNode()
     rclpy.spin(mppi_node)
