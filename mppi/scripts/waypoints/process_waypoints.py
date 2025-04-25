@@ -48,7 +48,7 @@ def compute_frenet_s(df, x_col, y_col):
     return s
 
 
-def processed_df(raw_df):
+def processed_df(raw_df, x_col, y_col):
     """
     Processes a raw DataFrame containing positional data and computes additional 
     fields for further analysis.
@@ -69,12 +69,12 @@ def processed_df(raw_df):
     """
     """"""
     n = len(raw_df)
-    s = compute_frenet_s(raw_df, 'x_position', 'y_position')
+    s = compute_frenet_s(raw_df, x_col, y_col)
 
     new_df = pd.DataFrame({
         '# s_m': s,
-        ' x_m': raw_df['x_position'].values,
-        ' y_m': raw_df['y_position'].values,
+        ' x_m': raw_df[x_col].values,
+        ' y_m': raw_df[x_col].values,
         ' psi_rad': 0,
         ' kappa_radpm': 0,
         ' vx_mps': 0,
@@ -86,14 +86,15 @@ def processed_df(raw_df):
     return new_df
 
 if __name__ == "__main__":
-    raw_file_path = './slam_levine/slam_levine_raw.csv'
-    raw_df = pd.read_csv(raw_file_path)
+    raw_file_path = './levine/modified_raceline_full_raw.csv'
+    # raw_df = pd.read_csv(raw_file_path)
+    raw_df = pd.read_csv(raw_file_path, sep=';')
 
     downsampled = downsample_df(raw_df, 640)
-    processed = processed_df(downsampled)
+    processed = processed_df(downsampled, 'x_m', 'y_m')
 
     # Save the downsampled data to a new CSV file
-    output_file_path = './slam_levine/slam_levine.csv'
+    output_file_path = './levine/modified_raceline_full.csv'
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(output_file_path, 'w') as f:
         f.write(f"# {current_time}\n# dummytext\n")
